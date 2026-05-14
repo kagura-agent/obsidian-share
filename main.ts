@@ -34,10 +34,7 @@ interface ObsidianShareSettings {
 }
 
 const DEFAULT_SETTINGS: ObsidianShareSettings = {
-	outputDirectory: join(
-		process.env.HOME || process.env.USERPROFILE || "~",
-		"shared-notes"
-	),
+	outputDirectory: "", // resolved at runtime to <vault>/.obsidian/plugins/obsidian-share/shared/
 	baseUrl: "http://localhost:8080/",
 	slugLength: 8,
 	autoUpdateOnSave: true,
@@ -264,6 +261,19 @@ export default class ObsidianSharePlugin extends Plugin {
 	statusBarEl: HTMLElement | null = null;
 	httpServer: Server | null = null;
 
+	getDefaultOutputDir(): string {
+		// Store shared HTML files inside the plugin's own directory
+		const vaultBasePath = (this.app.vault.adapter as any).basePath;
+		if (vaultBasePath) {
+			return join(vaultBasePath, ".obsidian", "plugins", "obsidian-share", "shared");
+		}
+		return join(process.env.HOME || process.env.USERPROFILE || "~", "shared-notes");
+	}
+
+	getOutputDir(): string {
+		return this.settings.outputDirectory || this.getDefaultOutputDir();
+	}
+
 	async onload() {
 		await this.loadSettings();
 		await this.loadRegistry();
@@ -391,7 +401,7 @@ export default class ObsidianSharePlugin extends Plugin {
 		if (this.httpServer) return;
 
 		const port = this.settings.serverPort;
-		const outputDir = this.settings.outputDirectory;
+		const outputDir = this.getOutputDir();
 
 		this.httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 			const url = req.url || "/";
@@ -523,7 +533,7 @@ export default class ObsidianSharePlugin extends Plugin {
 			if (!entry) return;
 
 			this.ensureOutputDir();
-			const outPath = join(this.settings.outputDirectory, `${entry.slug}.html`);
+			const outPath = join(this.getOutputDir(), `${entry.slug}.html`);
 			writeFileSync(outPath, fullHtml, "utf-8");
 		} catch (err) {
 			console.error("obsidian-share: render failed", err);
@@ -539,13 +549,14 @@ export default class ObsidianSharePlugin extends Plugin {
 	}
 
 	ensureOutputDir() {
-		if (!existsSync(this.settings.outputDirectory)) {
-			mkdirSync(this.settings.outputDirectory, { recursive: true });
+		const dir = this.getOutputDir();
+		if (!existsSync(dir)) {
+			mkdirSync(dir, { recursive: true });
 		}
 	}
 
 	removeHtmlFile(slug: string) {
-		const filePath = join(this.settings.outputDirectory, `${slug}.html`);
+		const filePath = join(this.getOutputDir(), `${slug}.html`);
 		try {
 			if (existsSync(filePath)) unlinkSync(filePath);
 		} catch (err) {
@@ -647,14 +658,15 @@ class ObsidianShareSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Output directory")
-			.setDesc("Where rendered HTML files are saved")
+			.setDesc(`Where rendered HTML files are saved. Leave empty for default: <vault>/.obsidian/plugins/obsidian-share/shared/`)
 			.addText((text) =>
 				text
-					.setPlaceholder("~/shared-notes")
+					.setPlaceholder("(plugin directory — auto)")
 					.setValue(this.plugin.settings.outputDirectory)
 					.onChange(async (value) => {
 						this.plugin.settings.outputDirectory = value;
 						await this.plugin.saveSettings();
+						await this.plugin.restartServer();
 					})
 			);
 
