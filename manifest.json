@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-share",
+  "name": "Obsidian Share",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "One-click self-hosted note sharing. Renders notes to self-contained HTML with base64-inlined images.",
+  "author": "kagura-agent",
+  "isDesktopOnly": true
+}
